@@ -23,9 +23,9 @@ TEXT_COLOR = (255, 255, 255)
 FONT = pygame.font.Font(None, 36)
 PIECE_IMAGES = {}
 analysis_cache = {}  # Кэш для анализа позиций
-# Загрузка движка Stockfish
-ENGINE_PATH = "stockfish"
-engine = chess.engine.SimpleEngine.popen_uci(ENGINE_PATH)
+
+
+
 
 # Инициализация окна
 screen = pygame.display.set_mode((WIDTH + 50, HEIGHT + 50))
@@ -105,11 +105,7 @@ def draw_eval_bar():
     pygame.draw.rect(screen, BAR_BLACK, (bar_x, bar_y + bar_height - eval_height, bar_width, eval_height))
 
 
-def get_best_move(board):
-    global score
-    result = engine.analyse(board, chess.engine.Limit(time=0.5))
-    score = result["score"].relative.score() or 0
-    return score, board.san(board.parse_san(result["pv"][0]))
+
 
 INFO_BG_COLOR = (220, 220, 220)
 INFO_WIDTH = 400
@@ -137,7 +133,7 @@ def get_previous_position():
     previous_fen = temp_board.fen()
     for i, move in enumerate(move_history[:current_move_index]):
         temp_board.push(move)
-        if i == current_move_index - 2: 
+        if i == current_move_index - 2:
             previous_fen = temp_board.fen()
 
     return previous_fen
@@ -294,12 +290,12 @@ def main():
                         selected_square = None
 
         if move_made:
-            get_best_move(board)
+
             move_made = False
 
         pygame.display.flip()
 
-    engine.quit()
+
     pygame.quit()
 
 
