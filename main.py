@@ -6,10 +6,10 @@ import tkinter as tk
 from tkinter import filedialog
 import g4f
 import re
-# Инициализация Pygame
+
 pygame.init()
 
-# Константы
+
 WIDTH, HEIGHT = 600, 600
 SQUARE_SIZE = WIDTH // 8
 WHITE = (240, 217, 181)
@@ -22,17 +22,29 @@ BUTTON_COLOR = (100, 100, 100)
 TEXT_COLOR = (255, 255, 255)
 FONT = pygame.font.Font(None, 36)
 PIECE_IMAGES = {}
-analysis_cache = {}  # Кэш для анализа позиций
+analysis_cache = {}
+
+SETTINGS_WIDTH = 200
+SETTINGS_BG = (180, 180, 180)
+
+models = {
+    "GPT-4": g4f.models.gpt_4,
+    "GPT-3.5 Turbo": g4f.models.gpt_3_5_turbo
+}
+selected_model = list(models.keys())[0]
+selected_language = "English"
+play_against_stockfish = False
+
+game_name = "Неизвестная партия"
+white_player = "Белые"
+black_player = "Чёрные"
 
 
-
-
-# Инициализация окна
-screen = pygame.display.set_mode((WIDTH + 50, HEIGHT + 50))
+screen = pygame.display.set_mode((WIDTH + 1500, HEIGHT + 100))
 pygame.display.set_caption("Chess Analyzer")
 
 
-# Загрузка изображений фигур
+
 def load_piece_images():
     pieces = ["p", "r", "n", "b", "q", "k", "P", "R", "N", "B", "Q", "K"]
     for piece in pieces:
@@ -69,16 +81,27 @@ def draw_buttons():
     load_button = pygame.Rect(50, HEIGHT + 10, 150, 30)
     prev_button = pygame.Rect(250, HEIGHT + 10, 50, 30)
     next_button = pygame.Rect(350, HEIGHT + 10, 50, 30)
+    set_button = pygame.Rect(450, HEIGHT + 10, 150, 30)
 
     pygame.draw.rect(screen, BUTTON_COLOR, load_button)
     pygame.draw.rect(screen, BUTTON_COLOR, prev_button)
     pygame.draw.rect(screen, BUTTON_COLOR, next_button)
+    pygame.draw.rect(screen, BUTTON_COLOR, set_button)
 
-    screen.blit(FONT.render("Load PGN", True, TEXT_COLOR), (60, HEIGHT + 15))
+    if selected_language == "English":
+        screen.blit(FONT.render("Load PGN", True, TEXT_COLOR), (60, HEIGHT + 15))
+        screen.blit(FONT.render("SETTINGS", True, TEXT_COLOR), (450, HEIGHT + 15))
+    else:
+        screen.blit(FONT.render("Загрузить PGN", True, TEXT_COLOR), (60, HEIGHT + 15))
+        screen.blit(FONT.render("НАСТРОЙКИ", True, TEXT_COLOR), (450, HEIGHT + 15))
+
+
+
     screen.blit(FONT.render("<", True, TEXT_COLOR), (265, HEIGHT + 15))
     screen.blit(FONT.render(">", True, TEXT_COLOR), (365, HEIGHT + 15))
 
-    return load_button, prev_button, next_button
+
+    return load_button, prev_button, next_button, set_button
 
 
 def draw_arrows():
@@ -112,8 +135,9 @@ INFO_WIDTH = 400
 screen = pygame.display.set_mode((WIDTH + INFO_WIDTH + 50, HEIGHT + 50))
 pygame.display.set_caption("Chess Analyzer")
 
+
 def load_pgn():
-    global board, move_history, current_move_index
+    global board, move_history, current_move_index, game_name, white_player, black_player
     root = tk.Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(title="Select PGN File", filetypes=[("PGN Files", "*.pgn")])
@@ -124,6 +148,12 @@ def load_pgn():
                 board = game.board()
                 move_history = list(game.mainline_moves())
                 current_move_index = -1
+
+                # Извлекаем информацию о партии
+                game_name = game.headers.get("Event", "Неизвестная партия")
+                white_player = game.headers.get("White", "Белые")
+                black_player = game.headers.get("Black", "Чёрные")
+
         except Exception as e:
             print(f"Error loading PGN: {e}")
 
@@ -222,47 +252,146 @@ def get_analysis():
         curtext = analysis_cache[fen]
         return
 
-    curtext = "Loading..."
+    if selected_language == "English":
+        curtext = "Loading..."
+    else:
+        curtext = "Загрузка..."
+
     draw_info_panel(curtext)
     pygame.display.flip()
     print(board.fen())
     print(str((get_current_position())))
 
+    model = models[selected_model]
+
+    if selected_language == "Русский":
+        messages = [{"role": "user",
+                     "content": f"Ты шахматный тренер и должен рассказать тактику и дать советы по позиции. "
+                                f"Название партии: {game_name}. "
+                                f"Игроки: {white_player} (белые) против {black_player} (чёрные). "
+                                f"Название дебюта. "
+                                f"Прошлая позиция: {get_previous_position()} "
+                                f"Текущая позиция: {get_current_position()}"}]
+    else:
+        messages = [{"role": "user",
+                     "content": f"You are a chess coach and should explain tactics and give advice on the position. "
+                                f"Game name: {game_name}. "
+                                f"Players: {white_player} (white) vs. {black_player} (black). "
+                                f"Opening name. "
+                                f"Previous position: {get_previous_position()} "
+                                f"Current position: {get_current_position()}"}]
+
     analysis = g4f.ChatCompletion.create(
-        model=g4f.models.gpt_4,
-        messages=[{"role": "user",
-                   "content": "Ты шахматный тренер и должен рассказать тактику и дать советы по позиции. Название дебюта. " +
-                              "Прошлая позиция: " + str(get_previous_position()) +
-                              " Текущая: " + str(get_current_position())}]
+        model=model,
+        messages=messages
     )
 
     curtext = analysis
     analysis_cache[fen] = analysis
+
+
+
+
+def draw_settings_panel():
+    panel_x = WIDTH + 50
+    pygame.draw.rect(screen, INFO_BG_COLOR, (panel_x, 0, INFO_WIDTH, HEIGHT))
+
+    title = FONT.render("Settings", True, (0, 0, 0))
+    screen.blit(title, (panel_x + 10, 10))
+
+
+    model_label = FONT.render("Model:", True, (0, 0, 0))
+    screen.blit(model_label, (panel_x + 10, 50))
+    model_rect = pygame.Rect(panel_x + 10, 80, SETTINGS_WIDTH - 20, 30)
+    pygame.draw.rect(screen, BUTTON_COLOR, model_rect)
+    model_text = FONT.render(selected_model, True, TEXT_COLOR)
+    screen.blit(model_text, (panel_x + 15, 85))
+
+
+    lang_label = FONT.render("Language:", True, (0, 0, 0))
+    screen.blit(lang_label, (panel_x + 10, 130))
+    eng_button = pygame.Rect(panel_x + 10, 160, 80, 30)
+    rus_button = pygame.Rect(panel_x + 110, 160, 80, 30)
+    pygame.draw.rect(screen, (0, 255, 0) if selected_language == "English" else BUTTON_COLOR, eng_button)
+    pygame.draw.rect(screen, (0, 255, 0) if selected_language == "Русский" else BUTTON_COLOR, rus_button)
+    screen.blit(FONT.render("EN", True, TEXT_COLOR), (panel_x + 35, 165))
+    screen.blit(FONT.render("RU", True, TEXT_COLOR), (panel_x + 135, 165))
+
+
+    checkbox_rect = pygame.Rect(panel_x + 10, 220, 20, 20)
+    pygame.draw.rect(screen, BUTTON_COLOR, checkbox_rect, border_radius=3)
+    if play_against_stockfish:
+        pygame.draw.line(screen, (0, 255, 0), (panel_x + 12, 230), (panel_x + 25, 215), 3)
+        pygame.draw.line(screen, (0, 255, 0), (panel_x + 25, 215), (panel_x + 35, 235), 3)
+    mode_label = FONT.render("COMING SOON", True, (0, 0, 0))
+    screen.blit(mode_label, (panel_x + 40, 220))
+
+    return model_rect, eng_button, rus_button, checkbox_rect
+
+
+
+
+def handle_settings_click(x, y, model_rect, eng_button, rus_button, checkbox_rect):
+    global selected_model, selected_language, play_against_stockfish
+
+    if model_rect.collidepoint(x, y):
+        model_keys = list(models.keys())
+        selected_index = model_keys.index(selected_model)
+        selected_model = model_keys[(selected_index + 1) % len(model_keys)]
+    elif eng_button.collidepoint(x, y):
+        selected_language = "English"
+    elif rus_button.collidepoint(x, y):
+        selected_language = "Русский"
+    elif checkbox_rect.collidepoint(x, y):
+        play_against_stockfish = not play_against_stockfish
+
+
 
 def main():
     global current_move_index, curtext
     running = True
     selected_square = None
     move_made = False
+
     curtext = "Analitics"
+    settings_enabled = False
     while running:
         screen.fill((0, 0, 0))
         draw_board()
         draw_pieces()
         draw_arrows()
         draw_eval_bar()
-        draw_info_panel(curtext)
-        load_button, prev_button, next_button = draw_buttons()
+        model_rect = eng_button = rus_button = checkbox_rect = None
+        if settings_enabled == True:
 
+            model_rect, eng_button, rus_button, checkbox_rect = draw_settings_panel()
+        else:
+            draw_info_panel(curtext)
+
+        load_button, prev_button, next_button, set_button = draw_buttons()
         for event in pygame.event.get():
             handle_scroll(event)
+
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 x, y = event.pos
+                x, y = event.pos
+
+                if settings_enabled:
+                    if model_rect and model_rect.collidepoint(x, y):
+                        handle_settings_click(x, y, model_rect, eng_button, rus_button, checkbox_rect)
+                    elif eng_button and eng_button.collidepoint(x, y):
+                        handle_settings_click(x, y, model_rect, eng_button, rus_button, checkbox_rect)
+                    elif rus_button and rus_button.collidepoint(x, y):
+                        handle_settings_click(x, y, model_rect, eng_button, rus_button, checkbox_rect)
+                    elif checkbox_rect and checkbox_rect.collidepoint(x, y):
+                        handle_settings_click(x, y, model_rect, eng_button, rus_button, checkbox_rect)
 
                 if load_button.collidepoint(x, y):
                     load_pgn()
+                if set_button.collidepoint(x, y):
+                    settings_enabled = not settings_enabled
                 elif prev_button.collidepoint(x, y) and current_move_index > 0:
                     current_move_index -= 1
                     board.undo()
